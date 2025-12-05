@@ -20,6 +20,35 @@ export default function Dashboard() {
       usuarioNome: usuario?.nome 
     })
     
+    // Verificar se é super admin e redirecionar
+    const checkAndRedirect = async () => {
+      const token = localStorage.getItem('token')
+      const isSuperAdminLocal = localStorage.getItem('isSuperAdmin')
+      
+      if (token && isSuperAdminLocal === 'true') {
+        try {
+          const response = await fetch('/api/admin/verificar-admin', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            if (data.is_super_admin) {
+              // Redirecionar para /admin se for super admin
+              window.location.href = '/admin'
+              return
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao verificar super admin:', error)
+        }
+      }
+    }
+    
+    checkAndRedirect()
+    
     if (!usuario) {
       console.log('⏳ [DASHBOARD PAGE] Aguardando usuário...')
       return

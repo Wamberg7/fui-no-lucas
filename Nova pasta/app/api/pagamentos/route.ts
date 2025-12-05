@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validar método de pagamento
-    const metodosValidos = ['dinheiro', 'cartao_credito', 'cartao_debito', 'pix', 'boleto', 'transferencia']
+    const metodosValidos = ['dinheiro', 'cartao_credito', 'cartao_debito', 'pix', 'boleto', 'transferencia', 'carteira']
     if (!metodosValidos.includes(metodo_pagamento)) {
       return NextResponse.json(
         { error: 'Método de pagamento inválido' },
@@ -119,31 +119,83 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Buscar loja do usuário para verificar gateway configurado
+    const { data: loja } = await supabase
+      .from('lojas')
+      .select('id_lojas')
+      .eq('usuarios_id_usuarios', usuario.id)
+      .limit(1)
+      .maybeSingle()
+
     // Gerar ID de transação único
     const id_transacao = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-    // Gerar link de pagamento (exemplo para PIX)
+    // Processar pagamento com gateway configurado (se disponível)
     let link_pagamento = null
-    if (metodo_pagamento === 'pix') {
+    let gateway_usado = null
+    let qr_code = null
+
+    if (loja && (metodo_pagamento === 'pix' || metodo_pagamento === 'carteira')) {
+      try {
+        const { processPaymentWithGateway } = await import('@/lib/gateways/helper')
+        const paymentResult = await processPaymentWithGateway(loja.id_lojas, {
+          amount: total,
+          description: `Pagamento de venda #${id_transacao}`,
+          customer: {
+            name: usuario.nome,
+            email: usuario.email
+          },
+          metadata: {
+            venda_id: id_transacao,
+            usuario_id: usuario.id
+          }
+        })
+
+        if (paymentResult.success) {
+          link_pagamento = paymentResult.payment_link || null
+          qr_code = paymentResult.qr_code || null
+          gateway_usado = 'gateway_configurado'
+        }
+      } catch (error) {
+        console.error('Erro ao processar pagamento com gateway:', error)
+        // Continuar com processamento padrão se houver erro
+      }
+    }
+
+    // Fallback para processamento padrão se gateway não estiver configurado
+    if (!link_pagamento && metodo_pagamento === 'pix') {
       link_pagamento = `https://api.pagamento.com/pix/${id_transacao}`
-    } else if (metodo_pagamento === 'boleto') {
+    } else if (!link_pagamento && metodo_pagamento === 'boleto') {
       link_pagamento = `https://api.pagamento.com/boleto/${id_transacao}`
     }
 
     // Criar venda com informações de pagamento
+    const dadosVenda: any = {
+      usuarios_id_usuarios,
+      total,
+      status: 'pendente',
+      status_pagamento: 'pendente',
+      metodo_pagamento,
+      id_transacao,
+      link_pagamento,
+      observacoes: observacoes || null,
+      dados_pagamento: dados_pagamento || null
+    }
+
+    // Adicionar informações do gateway se disponível
+    if (gateway_usado) {
+      dadosVenda.gateway_pagamento = gateway_usado
+      if (qr_code) {
+        dadosVenda.dados_pagamento = {
+          ...(dados_pagamento || {}),
+          qr_code
+        }
+      }
+    }
+
     const { data: venda, error: vendaError } = await supabase
       .from('vendas')
-      .insert({
-        usuarios_id_usuarios,
-        total,
-        status: 'pendente',
-        status_pagamento: 'pendente',
-        metodo_pagamento,
-        id_transacao,
-        link_pagamento,
-        observacoes: observacoes || null,
-        dados_pagamento: dados_pagamento || null
-      })
+      .insert(dadosVenda)
       .select()
       .single()
 
@@ -172,7 +224,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ...venda,
       link_pagamento,
-      mensagem: 'Pagamento criado com sucesso. Use o link_pagamento para processar o pagamento.'
+      qr_code: qr_code || null,
+      gateway_usado: gateway_usado || null,
+      mensagem: 'Pagamento criado com sucesso. Use o link_pagamento ou qr_code para processar o pagamento.'
     }, { status: 201 })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })

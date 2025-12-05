@@ -11,9 +11,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    // Verificar se é admin (você pode criar uma coluna tipo_usuario = 'admin' na tabela usuarios)
-    // Por enquanto, vamos verificar se existe algum campo que indique admin
-    // Você pode ajustar essa lógica conforme sua necessidade
+    // Verificar se é super admin
+    const { data: usuarioCompleto } = await supabase
+      .from('usuarios')
+      .select('is_super_admin')
+      .eq('id_usuarios', usuario.id)
+      .single()
+
+    if (!usuarioCompleto?.is_super_admin) {
+      return NextResponse.json({ error: 'Acesso negado. Apenas super administradores podem acessar.' }, { status: 403 })
+    }
 
     // Buscar todas as lojas
     const { data: lojas, error: lojasError } = await supabase

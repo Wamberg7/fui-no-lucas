@@ -96,12 +96,18 @@ export async function PUT(request: NextRequest) {
       cor_secundaria
     } = body
 
-    // Buscar loja existente ou criar nova
-    const { data: lojaExistente } = await supabase
+    // Buscar loja existente do usuário ou criar nova
+    const { data: lojaExistente, error: errorBusca } = await supabase
       .from('lojas')
       .select('*')
+      .eq('usuarios_id_usuarios', usuario.id)
       .limit(1)
-      .single()
+      .maybeSingle()
+    
+    if (errorBusca && errorBusca.code !== 'PGRST116') {
+      console.error('Erro ao buscar loja:', errorBusca)
+      return NextResponse.json({ error: `Erro ao buscar loja: ${errorBusca.message}` }, { status: 400 })
+    }
 
     const dadosLoja: any = {
       nome_loja: nome_loja || '',
@@ -125,27 +131,51 @@ export async function PUT(request: NextRequest) {
         .single()
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 })
+        console.error('Erro ao atualizar loja:', error)
+        return NextResponse.json({ error: `Erro ao atualizar loja: ${error.message}` }, { status: 400 })
       }
 
       return NextResponse.json({ success: true, data })
     } else {
       // Criar nova loja para o usuário
-      const { data, error } = await supabase
-        .from('lojas')
-        .insert({
-          ...dadosLoja,
-          usuarios_id_usuarios: usuario.id,
-          slug: `loja-${usuario.id}-${Date.now()}`
-        })
-        .select()
-        .single()
-
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 })
+      const dadosInsercao = {
+        ...dadosLoja,
+        usuarios_id_usuarios: usuario.id,
+        data_criacao: new Date().toISOString().split('T')[0]
       }
 
-      return NextResponse.json({ success: true, data })
+      // Adicionar slug apenas se a coluna existir
+      try {
+        const { data, error } = await supabase
+          .from('lojas')
+          .insert({
+            ...dadosInsercao,
+            slug: `loja-${usuario.id}-${Date.now()}`
+          })
+          .select()
+          .single()
+
+        if (error) {
+          // Tentar sem slug se der erro
+          const { data: dataRetry, error: errorRetry } = await supabase
+            .from('lojas')
+            .insert(dadosInsercao)
+            .select()
+            .single()
+
+          if (errorRetry) {
+            console.error('Erro ao criar loja:', errorRetry)
+            return NextResponse.json({ error: `Erro ao criar loja: ${errorRetry.message}` }, { status: 400 })
+          }
+
+          return NextResponse.json({ success: true, data: dataRetry })
+        }
+
+        return NextResponse.json({ success: true, data })
+      } catch (err: any) {
+        console.error('Erro ao criar loja:', err)
+        return NextResponse.json({ error: `Erro ao criar loja: ${err.message}` }, { status: 400 })
+      }
     }
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })

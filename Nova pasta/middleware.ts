@@ -7,6 +7,11 @@ export function middleware(request: NextRequest) {
   // Rotas públicas que não precisam de autenticação
   const publicRoutes = ['/auth', '/api/auth']
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
+  
+  // Rota de admin login é pública
+  if (pathname.startsWith('/auth/admin')) {
+    return NextResponse.next()
+  }
 
   // Se for rota pública, permitir acesso SEMPRE (sem verificar token)
   if (isPublicRoute) {
@@ -21,6 +26,14 @@ export function middleware(request: NextRequest) {
   if (!token && !isPublicRoute) {
     const loginUrl = new URL('/auth/login', request.url)
     loginUrl.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  // Proteger rota /admin - apenas super admins podem acessar
+  // A verificação completa será feita no lado do cliente e servidor
+  // Aqui apenas redirecionamos se não tiver token
+  if (pathname.startsWith('/admin') && !token) {
+    const loginUrl = new URL('/auth/login', request.url)
     return NextResponse.redirect(loginUrl)
   }
 

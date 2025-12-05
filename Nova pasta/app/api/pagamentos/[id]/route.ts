@@ -74,10 +74,11 @@ export async function PUT(
         updateData.status = 'concluida'
         updateData.data_pagamento = new Date().toISOString()
         
-        // Atualizar estoque dos produtos
+        // Buscar dados completos da venda
         const { data: venda } = await supabase
           .from('vendas')
           .select(`
+            *,
             itens:itens_venda (
               produtos_id_produtos,
               quantidade
@@ -87,20 +88,56 @@ export async function PUT(
           .eq('usuarios_id_usuarios', usuario.id)
           .single()
 
-        if (venda && venda.itens) {
-          for (const item of venda.itens) {
-            const { data: produto } = await supabase
-              .from('produtos')
-              .select('estoque')
-              .eq('id_produtos', item.produtos_id_produtos)
-              .single()
-
-            if (produto) {
-              const novoEstoque = produto.estoque - item.quantidade
-              await supabase
+        if (venda) {
+          // Atualizar estoque dos produtos
+          if (venda.itens) {
+            for (const item of venda.itens) {
+              const { data: produto } = await supabase
                 .from('produtos')
-                .update({ estoque: novoEstoque })
+                .select('estoque')
                 .eq('id_produtos', item.produtos_id_produtos)
+                .single()
+
+              if (produto) {
+                const novoEstoque = produto.estoque - item.quantidade
+                await supabase
+                  .from('produtos')
+                  .update({ estoque: novoEstoque })
+                  .eq('id_produtos', item.produtos_id_produtos)
+              }
+            }
+          }
+
+          // Se o método de pagamento for "carteira", aplicar comissão
+          if (venda.metodo_pagamento === 'carteira') {
+            // Calcular comissão: R$ 0,50 + 3% do valor da venda
+            const taxaFixa = 0.50
+            const taxaPercentual = 3.00
+            const valorComissao = taxaFixa + (venda.total * taxaPercentual / 100)
+
+            // Buscar a loja do usuário
+            const { data: loja } = await supabase
+              .from('lojas')
+              .select('id_lojas')
+              .eq('usuarios_id_usuarios', usuario.id)
+              .limit(1)
+              .maybeSingle()
+
+            if (loja) {
+              // Registrar comissão
+              await supabase
+                .from('comissoes')
+                .insert({
+                  vendas_id_vendas: venda.id_vendas,
+                  lojas_id_lojas: loja.id_lojas,
+                  usuarios_id_usuarios: usuario.id,
+                  valor_venda: venda.total,
+                  taxa_fixa: taxaFixa,
+                  taxa_percentual: taxaPercentual,
+                  valor_comissao: valorComissao,
+                  metodo_pagamento: 'carteira',
+                  data_venda: venda.data_venda || new Date().toISOString()
+                })
             }
           }
         }

@@ -18,6 +18,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       pathname: window.location.pathname
     })
     
+    // Verificar se é super admin e redirecionar para /admin (exceto se já estiver em /admin)
+    const checkSuperAdmin = async () => {
+      const pathname = window.location.pathname
+      // Não redirecionar se já estiver na página admin
+      if (pathname.startsWith('/admin')) {
+        return
+      }
+
+      const token = localStorage.getItem('token')
+      const isSuperAdminLocal = localStorage.getItem('isSuperAdmin')
+      
+      if (token && isSuperAdminLocal === 'true') {
+        try {
+          const response = await fetch('/api/admin/verificar-admin', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            if (data.is_super_admin) {
+              console.log('🔴 [DASHBOARD LAYOUT] Super admin detectado, redirecionando para /admin')
+              router.push('/admin')
+              return
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao verificar super admin:', error)
+        }
+      }
+    }
+    
     // Verificar localStorage diretamente também
     const token = localStorage.getItem('token')
     const usuarioStr = localStorage.getItem('usuario')
@@ -25,6 +58,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       hasToken: !!token,
       hasUsuario: !!usuarioStr
     })
+    
+    // Verificar super admin primeiro
+    checkSuperAdmin()
     
     // Aguardar um pouco para o AuthProvider processar
     const timer = setTimeout(() => {
@@ -48,6 +84,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
       } else if (usuario) {
         console.log('✅ [DASHBOARD LAYOUT] Usuário autenticado, exibindo dashboard')
+        // Verificar novamente se é super admin após carregar usuário
+        checkSuperAdmin()
       }
     }, 500)
 

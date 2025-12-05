@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     // Buscar apenas as colunas básicas que SEMPRE existem
     const { data: usuarios, error: errorBusca } = await supabase
       .from('usuarios')
-      .select('id_usuarios, email, telefone, senha, tipo_conta, data_cadastro')
+      .select('id_usuarios, email, telefone, senha, tipo_conta, data_cadastro, is_super_admin')
       .eq('email', email)
     
     if (errorBusca) {
@@ -125,7 +125,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       token,
-      usuario: usuarioSemSenha
+      usuario: usuarioSemSenha,
+      isSuperAdmin: usuario.is_super_admin === true
     })
   } catch (error: any) {
     console.error('💥 [LOGIN API] Erro inesperado:', error)

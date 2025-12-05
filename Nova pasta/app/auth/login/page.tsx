@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { LogIn, Mail, Lock, AlertCircle } from 'lucide-react'
+import { LogIn, Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/components/AuthProvider'
 
@@ -11,6 +11,7 @@ export default function LoginPage() {
   const { login } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({
     email: '',
     senha: ''
@@ -41,10 +42,24 @@ export default function LoginPage() {
         // Salvar no localStorage
         localStorage.setItem('token', data.token)
         localStorage.setItem('usuario', JSON.stringify(data.usuario))
+        
+        // Salvar isSuperAdmin se o usuário for super admin
+        if (data.isSuperAdmin === true) {
+          localStorage.setItem('isSuperAdmin', 'true')
+          console.log('🔐 [LOGIN PAGE] Usuário é Super Admin')
+        } else {
+          localStorage.removeItem('isSuperAdmin')
+        }
+        
         console.log('💾 [LOGIN PAGE] Dados salvos no localStorage')
         
         // Salvar token nos cookies também (para o middleware verificar)
         document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`
+        if (data.isSuperAdmin === true) {
+          const expires = new Date()
+          expires.setDate(expires.getDate() + 7)
+          document.cookie = `isSuperAdmin=true; expires=${expires.toUTCString()}; path=/`
+        }
         console.log('🍪 [LOGIN PAGE] Token salvo nos cookies')
         
         // Usar a função login do AuthProvider para atualizar o estado
@@ -112,13 +127,26 @@ export default function LoginPage() {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   value={formData.senha}
                   onChange={(e) => setFormData({ ...formData, senha: e.target.value })}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   placeholder="••••••••"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors focus:outline-none"
+                  tabIndex={-1}
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showPassword ? (
+                    <EyeOff size={20} />
+                  ) : (
+                    <Eye size={20} />
+                  )}
+                </button>
               </div>
             </div>
 
